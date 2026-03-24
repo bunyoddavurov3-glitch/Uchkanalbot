@@ -863,9 +863,9 @@ async def publish_series(call: types.CallbackQuery):
     await call.answer()
 
     #============== TREYLERNI O'CHIRISH ==================
-    @dp.callback_query_handler(lambda c: c.data.startswith("del_trailer:"), state=EditFlow.choose_action)
+ @dp.callback_query_handler(lambda c: c.data == "delete_trailer")
 async def delete_trailer(call: types.CallbackQuery, state: FSMContext):
-    code = call.data.split(":")[1]
+    await call.answer("🗑 Trailer o‘chirildi")
 
     db = load_db()
     item = db.get(code)
