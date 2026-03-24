@@ -715,19 +715,43 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
 
     return False, "❌ Topilmadi"
 
-        # ================== TREYLER (3K kanal) ==================
-elif action == "trailer_add":        
+# ================== TREYLER (3K kanal) ==================
+elif action == "trailer_add":
     trailer = item.get("trailer") or {}
-        if trailer.get("file_id") and CHANNEL1_ID:
-            try:
-                await bot.send_video(
-                    CHANNEL1_ID,
-                    trailer["file_id"],
-                    caption=_safe_caption_html(trailer.get("caption", "")),
-                    parse_mode="HTML"
-                )
-            except Exception as e:
-                print(f"[TRAILER SEND ERROR] {e}")
+
+    # eski treyler bo‘lsa o‘chiramiz
+    if trailer.get("message_id"):
+        try:
+            await bot.delete_message(TRAILER_CHANNEL_ID, trailer["message_id"])
+        except Exception:
+            pass
+
+    # yangi treylerni 3K ga yuboramiz
+    msg = await bot.send_video(
+        TRAILER_CHANNEL_ID,
+        message.video.file_id,
+        caption=message.caption or "",
+        parse_mode="HTML"
+    )
+
+    # DB ga saqlaymiz
+    item["trailer"] = {
+        "file_id": message.video.file_id,
+        "caption": message.caption or "",
+        "message_id": msg.message_id
+    }
+
+    # 🔥 2K post tugmasini yangilaymiz
+    ch_msg_id = item.get("channel_msg_id")
+    if ch_msg_id:
+        try:
+            await bot.edit_message_reply_markup(
+                CHANNEL2_ID,
+                ch_msg_id,
+                reply_markup=channel_movie_kb_full(code)
+            )
+        except Exception:
+            pass
 
         # ================== MOVIE ==================
         if item.get("type") == "movie":
