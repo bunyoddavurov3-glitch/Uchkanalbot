@@ -24,7 +24,6 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 # Kanal IDlar (K1 baza, K2 biznes)
 CHANNEL1_ID = int(os.getenv("BASE_CHANNEL_ID", "0"))
 CHANNEL2_ID = int(os.getenv("BUSINESS_CHANNEL_ID", "0"))
-CHANNEL3_ID = int(os.getenv("TRAILER_CHANNEL_ID", "0"))
 
 # Majburiy obuna (1 ta kanal)
 FORCE_SUB_1_ID = int(os.getenv("FORCE_SUB_1_ID", "0"))
@@ -243,15 +242,6 @@ def subscribe_kb():
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🔔 Kanalga obuna bo‘lish", url=FORCE_SUB_1_LINK),
-        types.InlineKeyboardButton("🎞 Treyler kanal", url=os.getenv("FORCE_SUB_2_LINK","")),
-        types.InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")
-    )
-    return kb
-
-# upgraded
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("🔔 Kanalga obuna bo‘lish", url=FORCE_SUB_1_LINK),
         types.InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")
     )
     return kb
@@ -290,12 +280,11 @@ class AddSeries(StatesGroup):
     episodes = State()
 
 class EditFlow(StatesGroup):
-    choose_type = State()
+    choose_type = State()    # movie / series
     choose_code = State()
     choose_action = State()
     await_forward = State()
     await_ep_delete = State()
-    trailer = State()  # NEW
 
 class DeleteFlow(StatesGroup):
     code = State()
@@ -787,53 +776,6 @@ async def add_series_text_in_episodes(message: types.Message, state: FSMContext)
         reply_markup=admin_menu()
     )
 
-    #=================== TREYLER QO'SHISH ===================
-@dp.callback_query_handler(lambda c: c.data.startswith("add_trailer:"), state=EditFlow.choose_action)
-async def add_trailer_start(call: types.CallbackQuery, state: FSMContext):
-    code = call.data.split(":")[1]
-    await state.update_data(code=code)
-    await call.message.answer("🎞 Treyler videoni yuboring", reply_markup=admin_menu())
-    await EditFlow.trailer.set()
-    await call.answer()
-
-
-@dp.message_handler(content_types=types.ContentType.VIDEO, state=EditFlow.trailer)
-async def add_trailer_video(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    code = data["code"]
-
-    msg = await bot.send_video(
-        CHANNEL3_ID,
-        message.video.file_id,
-        caption=message.caption or ""
-    )
-
-    db = load_db()
-    item = db.get(code)
-
-    item["trailer"] = {
-        "exists": True,
-        "msg_id": msg.message_id
-    }
-
-    db[code] = item
-    save_db(db)
-
-    # 🔄 kanal postni yangilash
-    ch_id = item.get("channel_msg_id")
-    if ch_id:
-        try:
-            await bot.edit_message_reply_markup(
-                CHANNEL2_ID,
-                ch_id,
-                reply_markup=channel_movie_kb(code)
-            )
-        except:
-            pass
-
-    await message.answer("✅ Treyler qo‘shildi", reply_markup=edited_done_kb(code))
-    await state.finish()
-
 # ================== KANALGA YUBORISH ==================
 @dp.callback_query_handler(lambda c: c.data == "cancel_send")
 async def cancel_send(call: types.CallbackQuery):
@@ -860,38 +802,6 @@ async def publish_series(call: types.CallbackQuery):
     code = call.data.split(":", 1)[1]
     ok, msg = await publish_to_channel(code)
     await call.message.edit_text(msg if ok else msg)
-    await call.answer()
-
-    #============== TREYLERNI O'CHIRISH ==================
- @dp.callback_query_handler(lambda c: c.data == "delete_trailer")
-async def delete_trailer(call: types.CallbackQuery, state: FSMContext):
-    await call.answer("🗑 Trailer o‘chirildi")
-
-    db = load_db()
-    item = db.get(code)
-
-    item["trailer"] = {
-        "exists": False,
-        "msg_id": None
-    }
-
-    db[code] = item
-    save_db(db)
-
-    # 🔄 kanal postdan tugmani olib tashlaymiz
-    ch_id = item.get("channel_msg_id")
-    if ch_id:
-        try:
-            await bot.edit_message_reply_markup(
-                CHANNEL2_ID,
-                ch_id,
-                reply_markup=channel_movie_kb(code)
-            )
-        except:
-            pass
-
-    await call.message.answer("🗑 Treyler o‘chirildi", reply_markup=edited_done_kb(code))
-    await state.finish()
     await call.answer()
 
 # ================== QIDIRISH (KOD) ==================
@@ -1275,8 +1185,6 @@ def edit_movie_kb(code: str):
     kb.add(
         types.InlineKeyboardButton("♻️ Kanal1 postni yuboring", callback_data=f"edit_movie_post:{code}"),
         types.InlineKeyboardButton("🎥 Kanal1 video yuboring", callback_data=f"edit_movie_video:{code}"),
-        types.InlineKeyboardButton("🎞 Treyler qo‘shish", callback_data=f"add_trailer:{code}"),
-        types.InlineKeyboardButton("🗑 Treylerni o‘chirish", callback_data=f"del_trailer:{code}"),
         types.InlineKeyboardButton("🗑 O‘chirish", callback_data=f"edit_delete:{code}")
     )
     return kb
