@@ -716,17 +716,28 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
     return False, "❌ Topilmadi"
 
 # ================== TREYLER (3K kanal) ==================
+if action == "movie_post":
+    ...
+
+elif action == "movie_video":
+    ...
+
+elif action == "series_post":
+    ...
+
+elif action in ("series_add", "series_replace"):
+    ...
+
+# 🔥 SHU YERGA QO‘YASIZ
 elif action == "trailer_add":
     trailer = item.get("trailer") or {}
 
-    # eski treyler bo‘lsa o‘chiramiz
     if trailer.get("message_id"):
         try:
             await bot.delete_message(TRAILER_CHANNEL_ID, trailer["message_id"])
         except Exception:
             pass
 
-    # yangi treylerni 3K ga yuboramiz
     msg = await bot.send_video(
         TRAILER_CHANNEL_ID,
         message.video.file_id,
@@ -734,14 +745,12 @@ elif action == "trailer_add":
         parse_mode="HTML"
     )
 
-    # DB ga saqlaymiz
     item["trailer"] = {
         "file_id": message.video.file_id,
         "caption": message.caption or "",
         "message_id": msg.message_id
     }
 
-    # 🔥 2K post tugmasini yangilaymiz
     ch_msg_id = item.get("channel_msg_id")
     if ch_msg_id:
         try:
