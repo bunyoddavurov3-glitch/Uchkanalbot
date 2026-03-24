@@ -716,7 +716,8 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
     return False, "❌ Topilmadi"
 
         # ================== TREYLER (3K kanal) ==================
-        trailer = item.get("trailer") or {}
+elif action == "trailer_add":        
+    trailer = item.get("trailer") or {}
         if trailer.get("file_id") and CHANNEL1_ID:
             try:
                 await bot.send_video(
