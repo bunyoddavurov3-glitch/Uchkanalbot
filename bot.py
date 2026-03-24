@@ -2209,6 +2209,30 @@ async def edit_forward(message: types.Message, state: FSMContext):
             "message_id": msg.message_id
         }
 
+        # 🔥 2K tugmani yangilash
+        ch_msg_id = item.get("channel_msg_id")
+        if ch_msg_id:
+            try:
+                await bot.edit_message_reply_markup(
+                    CHANNEL2_ID,
+                    ch_msg_id,
+                    reply_markup=channel_movie_kb_full(code)
+                )
+            except:
+                pass
+        msg = await bot.send_video(
+            TRAILER_CHANNEL_ID,
+            message.video.file_id,
+            caption=message.caption or "",
+            parse_mode="HTML"
+        )
+
+        item["trailer"] = {
+            "file_id": message.video.file_id,
+            "caption": message.caption,
+            "message_id": msg.message_id
+        }
+
     db[code] = item
     save_db(db)
 
