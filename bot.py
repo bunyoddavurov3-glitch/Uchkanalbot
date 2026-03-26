@@ -1575,9 +1575,7 @@ async def delete_trailer(call: types.CallbackQuery):
     await call.message.answer("🗑 Treyler o‘chirildi")
     await call.answer()
 
-
 # ================== FORWARD ==================
-
 @dp.message_handler(state=EditFlow.await_forward, content_types=types.ContentType.ANY)
 async def edit_receive_forward(message: types.Message, state: FSMContext):
 
@@ -1587,14 +1585,20 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
     db = load_db()
     item = db.get(code)
 
-    # ===== TREYLER =====
+    # ================== TREYLER ==================
     if action == "trailer":
+
+        if message.content_type != types.ContentType.VIDEO:
+            await message.answer("❗ Treyler video yuboring")
+            return
+
         trailer = item.get("trailer") or {}
 
+        # mavjud bo‘lsa edit
         if trailer.get("channel_msg_id"):
             await bot.edit_message_media(
-                CHANNEL3_ID,
-                trailer["channel_msg_id"],
+                chat_id=CHANNEL3_ID,
+                message_id=trailer["channel_msg_id"],
                 media=types.InputMediaVideo(
                     media=message.video.file_id,
                     caption="♻️\n\n" + (message.caption or "")
@@ -1615,11 +1619,12 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
         db[code] = item
         save_db(db)
 
-        await message.answer("♻️ Treyler yangilandi", reply_markup=edited_done_kb(code))
+        # ❗ MUHIM: hech qanday tugma chiqmaydi
+        await message.answer("✅ Treyler tayyor")
         await state.finish()
         return
 
-    # ===== MOVIE POST =====
+    # ================== MOVIE ==================
     if action == "edit_movie_post":
         item["post_file_id"] = message.photo[-1].file_id
         item["post_caption"] = message.caption or ""
@@ -1628,6 +1633,7 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
         item["video_file_id"] = message.video.file_id
         item["video_unique_id"] = message.video.file_unique_id
 
+    # ================== SERIES ==================
     elif action == "edit_series_post":
         item["poster_file_id"] = message.photo[-1].file_id
         item["poster_caption"] = message.caption or ""
@@ -1645,9 +1651,9 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
     db[code] = item
     save_db(db)
 
+    # ✅ faqat 2K tahrirda tugma chiqadi
     await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
     await state.finish()
-
 
 # ================== QISM O‘CHIRISH ==================
 
@@ -1672,11 +1678,8 @@ async def delete_ep(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data.startswith("republish:"))
 async def republish(call: types.CallbackQuery):
 
-    if not is_admin(call.from_user.id):
-        await call.answer("❌ Brat, bu joy adminniki 😄", show_alert=True)
-        return
+    code = call.data.split(":")[1]
 
-    code = call.data.split(":", 1)[1]
     db = load_db()
     item = db.get(code)
 
@@ -1684,37 +1687,63 @@ async def republish(call: types.CallbackQuery):
         await call.answer("❌ Topilmadi", show_alert=True)
         return
 
-    # ================== 2K POST O‘CHIRISH ==================
+    # ❗ eski 2K postni o‘chiramiz
     old_msg_id = item.get("channel_msg_id")
     if old_msg_id:
         try:
             await bot.delete_message(CHANNEL2_ID, old_msg_id)
-        except Exception:
+        except:
             pass
-        item["channel_msg_id"] = None
 
-    # ================== 3K TREYLER O‘CHIRISH ==================
-    trailer = item.get("trailer")
-    if trailer and trailer.get("channel_msg_id"):
-        try:
-            await bot.delete_message(CHANNEL3_ID, trailer["channel_msg_id"])
-        except Exception:
-            pass
-        trailer["channel_msg_id"] = None
-        item["trailer"] = trailer
-
+    item["channel_msg_id"] = None
     db[code] = item
     save_db(db)
 
-    # ================== QAYTA YUBORISH ==================
+    # ❗ faqat 2K ga qayta yuboradi
     ok, msg = await publish_to_channel(code)
 
-    try:
-        await call.message.edit_text("♻️ Yangilandi")
-    except Exception:
-        pass
-
+    await call.message.answer("📣 Qayta yuborildi")
     await call.answer()
+
+# ================== QAYTA YUBORISH ==================
+@dp.callback_query_handler(lambda c: c.data.startswith("edit_again:"))
+async def edit_again(call: types.CallbackQuery):
+
+    code = call.data.split(":")[1]
+    db = load_db()
+    item = db.get(code)
+
+    if not item:
+        await call.answer("❌ Topilmadi", show_alert=True)
+        return
+
+    # ===== MOVIE =====
+    if item.get("type") == "movie":
+        caption = f"♻️ Yangilandi\n\n{item.get('post_caption','')}\n\n🆔 Kod: {code}"
+        try:
+            await bot.edit_message_caption(
+                chat_id=CHANNEL2_ID,
+                message_id=item["channel_msg_id"],
+                caption=caption,
+                reply_markup=channel_movie_kb(code)
+            )
+        except:
+            pass
+
+    # ===== SERIES =====
+    else:
+        caption = f"♻️ Yangi qisim qo‘shildi yoki sifatlisiga almashtirildi\n\n{item.get('poster_caption','')}\n\n🆔 Kod: {code}"
+        try:
+            await bot.edit_message_caption(
+                chat_id=CHANNEL2_ID,
+                message_id=item["channel_msg_id"],
+                caption=caption,
+                reply_markup=channel_series_kb(code)
+            )
+        except:
+            pass
+
+    await call.answer("♻️ Yangilandi")
 
 # ================== OBUNA TEKSHIR ==================
 @dp.callback_query_handler(lambda c: c.data == "check_sub")
