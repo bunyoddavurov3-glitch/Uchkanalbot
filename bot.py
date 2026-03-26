@@ -466,30 +466,31 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
 
         kb = channel_movie_kb(code)
 
-        # TREYLER bo‘lsa qo‘shamiz
         trailer = item.get("trailer")
-        if trailer:
+
+        # 🔥 1. AVVAL 3K GA YUBORAMIZ
+        if trailer and trailer.get("file_id") and not trailer.get("channel_msg_id"):
+            try:
+                msg_tr = await bot.send_video(
+                    CHANNEL3_ID,
+                    trailer["file_id"],
+                    caption=safe_caption(trailer.get("caption", "")),
+                    parse_mode="HTML"
+                )
+                trailer["channel_msg_id"] = msg_tr.message_id
+                trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
+                item["trailer"] = trailer
+            except Exception:
+                pass
+
+        # 🔥 2. KEYIN TUGMA QO‘SHAMIZ (FAKAT URL BO‘LSA)
+        if trailer and trailer.get("post_url"):
             kb.add(
                 types.InlineKeyboardButton(
                     "🎬 Treyler va ma'lumotlar",
-                    url=trailer.get("post_url", "")
+                    url=trailer["post_url"]
                 )
             )
-
-            # 3K ga treyler yuborish (agar hali yuborilmagan bo‘lsa)
-            if not trailer.get("channel_msg_id"):
-                try:
-                    msg_tr = await bot.send_video(
-                        CHANNEL3_ID,
-                        trailer["file_id"],
-                        caption=safe_caption(trailer.get("caption", "")),
-                        parse_mode="HTML"
-                    )
-                    trailer["channel_msg_id"] = msg_tr.message_id
-                    trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
-                    item["trailer"] = trailer
-                except Exception:
-                    pass
 
         msg = await bot.send_photo(
             CHANNEL2_ID,
@@ -514,27 +515,28 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
         kb = channel_series_kb(code)
 
         trailer = item.get("trailer")
-        if trailer:
+
+        if trailer and trailer.get("file_id") and not trailer.get("channel_msg_id"):
+            try:
+                msg_tr = await bot.send_video(
+                    CHANNEL3_ID,
+                    trailer["file_id"],
+                    caption=safe_caption(trailer.get("caption", "")),
+                    parse_mode="HTML"
+                )
+                trailer["channel_msg_id"] = msg_tr.message_id
+                trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
+                item["trailer"] = trailer
+            except Exception:
+                pass
+
+        if trailer and trailer.get("post_url"):
             kb.add(
                 types.InlineKeyboardButton(
                     "🎬 Treyler va ma'lumotlar",
-                    url=trailer.get("post_url", "")
+                    url=trailer["post_url"]
                 )
             )
-
-            if not trailer.get("channel_msg_id"):
-                try:
-                    msg_tr = await bot.send_video(
-                        CHANNEL3_ID,
-                        trailer["file_id"],
-                        caption=safe_caption(trailer.get("caption", "")),
-                        parse_mode="HTML"
-                    )
-                    trailer["channel_msg_id"] = msg_tr.message_id
-                    trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
-                    item["trailer"] = trailer
-                except Exception:
-                    pass
 
         msg = await bot.send_photo(
             CHANNEL2_ID,
@@ -551,7 +553,7 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
         return True, "🚀 Kanalga keeetti tog'o"
 
     return False, "❌ Topilmadi"
-
+    
 # ================== AUTPOST WATCHDOG ==================
 async def autopost_loop():
     while True:
