@@ -2064,10 +2064,11 @@ async def fallback_all(message: types.Message):
 # ================== STARTUP ==================
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
-    # start autopost watchdog
-    asyncio.get_event_loop().create_task(autopost_loop())
 
-if __name__ == "__main__":
+    # 🔥 autopost loop start (barqaror usul)
+    asyncio.create_task(autopost_loop())
+
+if name == "main":
     executor.start_polling(
         dp,
         skip_updates=True,
