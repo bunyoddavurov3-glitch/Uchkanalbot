@@ -2068,7 +2068,7 @@ async def on_startup(dp):
     # 🔥 autopost loop start (barqaror usul)
     asyncio.create_task(autopost_loop())
 
-if name == "main":
+if __name__ == "__main__":
     executor.start_polling(
         dp,
         skip_updates=True,
