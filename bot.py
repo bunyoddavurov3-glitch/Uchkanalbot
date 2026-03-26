@@ -1460,8 +1460,8 @@ def edit_type_kb():
 def edit_movie_kb(code: str):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton("♻️ Kanal1 postni yuboring", callback_data=f"edit_movie_post:{code}"),
-        types.InlineKeyboardButton("🎥 Kanal1 video yuboring", callback_data=f"edit_movie_video:{code}"),
+        types.InlineKeyboardButton("♻️ Postni yangilash", callback_data=f"edit_movie_post:{code}"),
+        types.InlineKeyboardButton("🎥 Videoni almashtirish", callback_data=f"edit_movie_video:{code}"),
         types.InlineKeyboardButton("🎬 Treyler qo‘shish/almashtirish", callback_data=f"edit_trailer:{code}"),
         types.InlineKeyboardButton("🗑 Treylerni o‘chirish", callback_data=f"delete_trailer:{code}"),
         types.InlineKeyboardButton("🗑 O‘chirish", callback_data=f"edit_delete:{code}")
@@ -1472,9 +1472,10 @@ def edit_movie_kb(code: str):
 def edit_series_kb(code: str):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
-        types.InlineKeyboardButton("♻️ Kanal1 postni yuboring", callback_data=f"edit_series_post:{code}"),
+        types.InlineKeyboardButton("♻️ Postni yangilash", callback_data=f"edit_series_post:{code}"),
         types.InlineKeyboardButton("➕ Yangi qism", callback_data=f"series_add:{code}"),
         types.InlineKeyboardButton("🔁 Qismni almashtirish", callback_data=f"series_replace:{code}"),
+        types.InlineKeyboardButton("🗑 Qismni o‘chirish", callback_data=f"series_del:{code}"),
         types.InlineKeyboardButton("🎬 Treyler qo‘shish/almashtirish", callback_data=f"edit_trailer:{code}"),
         types.InlineKeyboardButton("🗑 Treylerni o‘chirish", callback_data=f"delete_trailer:{code}"),
         types.InlineKeyboardButton("🗑 Serialni o‘chirish", callback_data=f"edit_delete:{code}")
@@ -1554,7 +1555,7 @@ async def delete_trailer(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-# ================== FORWARD QABUL ==================
+# ================== FORWARD ==================
 
 @dp.message_handler(state=EditFlow.await_forward, content_types=types.ContentType.ANY)
 async def edit_receive_forward(message: types.Message, state: FSMContext):
@@ -1574,6 +1575,8 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
 
         trailer = item.get("trailer") or {}
 
+        caption = _apply_edit_banner(message.caption or "", MOVIE_BANNER)
+
         if trailer.get("channel_msg_id"):
             try:
                 await bot.edit_message_media(
@@ -1581,7 +1584,7 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
                     message_id=trailer["channel_msg_id"],
                     media=types.InputMediaVideo(
                         media=message.video.file_id,
-                        caption=message.caption or ""
+                        caption=caption
                     )
                 )
             except:
@@ -1590,25 +1593,83 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
             msg = await bot.send_video(
                 CHANNEL3_ID,
                 message.video.file_id,
-                caption=message.caption or ""
+                caption=caption
             )
             trailer["channel_msg_id"] = msg.message_id
-            trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg.message_id}"
 
         trailer["file_id"] = message.video.file_id
-        trailer["caption"] = message.caption or ""
+        trailer["caption"] = caption
 
         item["trailer"] = trailer
         db[code] = item
         save_db(db)
 
-        await message.answer("♻️ Treyler yangilandi")
+        await message.answer("♻️ Treyler yangilandi", reply_markup=edited_done_kb(code))
+        await state.finish()
+        return
+
+    # -------- MOVIE POST --------
+    if action == "movie_post":
+        new_photo = message.photo[-1].file_id
+        new_caption = message.caption or ""
+
+        item["post_file_id"] = new_photo
+        item["post_caption"] = new_caption
+
+        db[code] = item
+        save_db(db)
+
+        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
+        await state.finish()
+        return
+
+    # -------- MOVIE VIDEO --------
+    if action == "movie_video":
+        item["video_file_id"] = message.video.file_id
+        item["video_unique_id"] = message.video.file_unique_id
+
+        db[code] = item
+        save_db(db)
+
+        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
+        await state.finish()
+        return
+
+    # -------- SERIES --------
+    if action in ("series_add", "series_replace"):
+        ep_num, ep_title = _parse_episode_caption(message.caption or "")
+        eps = item.get("episodes", {}) or {}
+
+        eps[str(ep_num)] = {
+            "video_file_id": message.video.file_id,
+            "video_unique_id": message.video.file_unique_id,
+            "title": ep_title
+        }
+
+        item["episodes"] = eps
+        db[code] = item
+        save_db(db)
+
+        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
+        await state.finish()
+        return
+
+    if action == "series_post":
+        item["poster_file_id"] = message.photo[-1].file_id
+        item["poster_caption"] = message.caption or ""
+
+        db[code] = item
+        save_db(db)
+
+        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
         await state.finish()
         return
 
 
+# ================== EDIT AGAIN ==================
+
 @dp.callback_query_handler(lambda c: c.data.startswith("edit_again:"))
-async def edit_again(call: types.CallbackQuery, state: FSMContext):
+async def edit_again(call: types.CallbackQuery):
 
     code = call.data.split(":")[1]
     db = load_db()
@@ -1623,160 +1684,6 @@ async def edit_again(call: types.CallbackQuery, state: FSMContext):
     else:
         await call.message.answer("📺 Tahrirlash:", reply_markup=edit_series_kb(code))
 
-    await call.answer()
-
-# -------- movie_post --------
-    if action == "movie_post":
-        if message.content_type != types.ContentType.PHOTO:
-            await message.answer("❗ Rasm (photo) forward qiling.", reply_markup=admin_menu())
-            return
-
-        new_photo = message.photo[-1].file_id
-        new_caption = message.caption or ""
-
-        ch_msg_id = item.get("channel_msg_id")
-        if ch_msg_id:
-            old_with_code = f"{(item.get('post_caption') or '').strip()}\n\n🆔 Kod: {code}"
-            final_caption = _ensure_code_line_kept(new_caption, old_with_code, code)
-            final_caption = _apply_edit_banner(final_caption, MOVIE_BANNER)
-            try:
-                media = types.InputMediaPhoto(media=new_photo, caption=final_caption, parse_mode="HTML")
-                await bot.edit_message_media(CHANNEL2_ID, ch_msg_id, media=media, reply_markup=channel_movie_kb(code))
-            except Exception:
-                try:
-                    await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_movie_kb(code))
-                except Exception:
-                    pass
-
-        item["post_file_id"] = new_photo
-        item["post_caption"] = new_caption
-        db[code] = item
-        save_db(db)
-
-        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
-        await state.finish()
-        return
-
-    # -------- movie_video --------
-    if action == "movie_video":
-        if message.content_type != types.ContentType.VIDEO:
-            await message.answer("❗ Video forward qiling.", reply_markup=admin_menu())
-            return
-
-        if _duplicate_video_exists(db, message.video.file_unique_id):
-            await message.answer("❗ Bu kino borku tog'o", reply_markup=admin_menu())
-            return
-
-        item["video_file_id"] = message.video.file_id
-        item["video_unique_id"] = message.video.file_unique_id
-        db[code] = item
-        save_db(db)
-
-        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
-        await state.finish()
-        return
-
-    # -------- series_post --------
-    if action == "series_post":
-        if message.content_type != types.ContentType.PHOTO:
-            await message.answer("❗ Rasm (photo) forward qiling.", reply_markup=admin_menu())
-            return
-
-        new_photo = message.photo[-1].file_id
-        new_caption = message.caption or ""
-
-        ch_msg_id = item.get("channel_msg_id")
-        if ch_msg_id:
-            old_with_code = f"{(item.get('poster_caption') or '').strip()}\n\n🆔 Kod: {code}"
-            final_caption = _ensure_code_line_kept(new_caption, old_with_code, code)
-            final_caption = _apply_edit_banner(final_caption, SERIES_BANNER)
-            try:
-                media = types.InputMediaPhoto(media=new_photo, caption=final_caption, parse_mode="HTML")
-                await bot.edit_message_media(CHANNEL2_ID, ch_msg_id, media=media, reply_markup=channel_series_kb(code))
-            except Exception:
-                try:
-                    await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_series_kb(code))
-                except Exception:
-                    pass
-
-        item["poster_file_id"] = new_photo
-        item["poster_caption"] = new_caption
-        db[code] = item
-        save_db(db)
-
-        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
-        await state.finish()
-        return
-
-    # -------- series add/replace --------
-    if action in ("series_add", "series_replace"):
-        if message.content_type != types.ContentType.VIDEO:
-            await message.answer("❗ Video forward qiling.", reply_markup=admin_menu())
-            return
-
-        ep_num, ep_title = _parse_episode_caption(message.caption or "")
-        if ep_num is None:
-            await message.answer("❗ Video captionida qism raqimi yo‘q.\nMasalan: <b>1 Yura davri 3</b>", reply_markup=admin_menu())
-            return
-
-        if _duplicate_video_exists(db, message.video.file_unique_id):
-            await message.answer("❗ Bu kino borku tog'o", reply_markup=admin_menu())
-            return
-
-        eps = item.get("episodes", {}) or {}
-        exists = str(ep_num) in eps
-
-        if action == "series_add" and exists:
-            await message.answer("❗ Bu qisim bor tog'o. Almashtirish tanlang.", reply_markup=admin_menu())
-            return
-        if action == "series_replace" and not exists:
-            await message.answer("❗ Bu qisim yo'q tog'o. Yangi qisim qo‘shish tanlang.", reply_markup=admin_menu())
-            return
-
-        eps[str(ep_num)] = {
-            "video_file_id": message.video.file_id,
-            "video_unique_id": message.video.file_unique_id,
-            "title": (ep_title or "").strip()
-        }
-        item["episodes"] = eps
-        db[code] = item
-        save_db(db)
-
-        # Kanal postiga ham banner qo'yib qo'yamiz (agar kanalda bo'lsa)
-        ch_msg_id = item.get("channel_msg_id")
-        if ch_msg_id:
-            try:
-                old_with_code = f"{(item.get('poster_caption') or '').strip()}\n\n🆔 Kod: {code}"
-                final_caption = _ensure_code_line_kept(item.get("poster_caption") or "", old_with_code, code)
-                final_caption = _apply_edit_banner(final_caption, SERIES_BANNER)
-                await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_series_kb(code))
-            except Exception:
-                pass
-
-        await message.answer("♻️ Yangilandi", reply_markup=edited_done_kb(code))
-        await state.finish()
-        return
-
-    await message.answer("❎ Bekor qilindi tog'o", reply_markup=admin_menu())
-    await state.finish()
-
-@dp.callback_query_handler(lambda c: c.data.startswith("edit_again:"))
-async def edit_again(call: types.CallbackQuery, state: FSMContext):
-    if not is_admin(call.from_user.id):
-        await call.answer("❌ Brat siz admin emassiz 😄", show_alert=True)
-        return
-
-    code = call.data.split(":", 1)[1]
-    db = load_db()
-    item = db.get(code)
-    if not item:
-        await call.answer("❌ Topilmadi", show_alert=True)
-        return
-
-    if item.get("type") == "movie":
-        await call.message.answer("🎬 Tahrirlash:", reply_markup=edit_movie_kb(code))
-    else:
-        await call.message.answer("📺 Tahrirlash:", reply_markup=edit_series_kb(code))
     await call.answer()
 
 # ================== REPUBLISH ==================
