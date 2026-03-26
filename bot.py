@@ -977,14 +977,12 @@ async def search_movie(message: types.Message):
     # ================= MOVIE =================
     if item.get("type") == "movie":
         token = str(random.randint(100000, 999999))
-
-        # 🔥 MUHIM: eskirgan tugma logikasi uchun
         last_movie_request[message.from_user.id] = code
         last_watch_token[message.from_user.id] = token
 
         kb_inline = movie_watch_kb(code, token)
 
-        # 🔥 TREYLER TUGMA
+        # 🔥 TREYLER TUGMA (agar bo‘lsa)
         trailer = item.get("trailer")
         if trailer and trailer.get("post_url"):
             kb_inline.add(
@@ -1009,7 +1007,6 @@ async def search_movie(message: types.Message):
         types.InlineKeyboardButton("📺 Barcha qismlari", callback_data=f"series_private:{code}")
     )
 
-    # 🔥 TREYLER TUGMA
     trailer = item.get("trailer")
     if trailer and trailer.get("post_url"):
         kb_inline.add(
@@ -1027,53 +1024,185 @@ async def search_movie(message: types.Message):
         parse_mode="HTML"
     )
 
-# ================== SERIALNI USERGA YUBORISH ==================
-async def send_series_to_user(user_id: int, code: str):
-    if not await check_subscription(user_id):
-        await bot.send_message(user_id, "❗ Avval kanalga obuna bo‘ling", reply_markup=subscribe_kb())
-        return
+# ================== FILMNI KO‘RISH (YAKKA) ==================
 
-    db = load_db()
-    item = db.get(code)
-    if not item or item.get("type") != "series":
-        await bot.send_message(user_id, "❌ Bunday kodli kino topilmadi", reply_markup=user_menu())
-        return
+@dp.callback_query_handler(lambda c: c.data.startswith("watch_"))
+async def watch_old(call: types.CallbackQuery):
+    await call.answer(
+        "❗️ Tugma eskirgan. Faqat oxirgi so'ralgan filmni ko'rishingiz mumkin. "
+        "Ushbu filmni ko'rish uchun esa kod orqali qayta qidiring yoki "
+        "kanaldagi bu film posti ostidagi ko'rish tugmasini bosing ",
+        show_alert=True
+    )
 
-    ep_nums = _sorted_episode_numbers(item)
-    if not ep_nums:
-        await bot.send_message(user_id, "❌ Qismlar topilmadi", reply_markup=user_menu())
-        return
 
-    kb_inline = series_eps_kb(code, ep_nums)
+@dp.callback_query_handler(lambda c: c.data.startswith("watch2_"))
+async def watch_movie(call: types.CallbackQuery):
 
-    # Treyler tugma
-    trailer = item.get("trailer")
-    if trailer and trailer.get("post_url"):
-        kb_inline.add(
-            types.InlineKeyboardButton(
-                "🎬 Treyler va ma'lumotlar",
-                url=trailer.get("post_url")
+    try:
+        parts = call.data.split("_", 2)
+        if len(parts) != 3:
+            await call.answer("❌ Topilmadi", show_alert=True)
+            return
+
+        code = parts[1]
+        token = parts[2]
+
+        # 🔒 TOKEN TEKSHIRISH
+        if last_movie_request.get(call.from_user.id) != code or last_watch_token.get(call.from_user.id) != token:
+            await call.answer(
+                "❗️ Tugma eskirgan. Faqat oxirgi so'ralgan filmni ko'rishingiz mumkin. "
+                "Ushbu filmni ko'rish uchun esa kod orqali qayta qidiring yoki "
+                "kanaldagi bu film posti ostidagi ko'rish tugmasini bosing ",
+                show_alert=True
             )
+            return
+
+        # 🔒 OBUNA
+        if not await check_subscription(call.from_user.id):
+            await call.message.answer("❗️ Avval kanalga obuna bo‘lingda", reply_markup=subscribe_kb())
+            await call.answer()
+            return
+
+        db = load_db()
+        item = db.get(code)
+
+        if not item or item.get("type") != "movie":
+            await call.answer("❌ Topilmadi", show_alert=True)
+            return
+
+        # 🔥 ENG MUHIM FIX
+        video_id = item.get("video_file_id")
+        if not video_id:
+            await call.message.answer("❌ Video topilmadi", reply_markup=user_menu())
+            await call.answer()
+            return
+
+        # 🎥 VIDEO YUBORISH
+        await bot.send_video(
+            chat_id=call.from_user.id,
+            video=video_id,
+            protect_content=protect_for(call.from_user.id)
         )
 
-    ch_msg_id = item.get("channel_msg_id")
-    if ch_msg_id:
-        await bot.copy_message(
-            chat_id=user_id,
-            from_chat_id=CHANNEL2_ID,
-            message_id=ch_msg_id,
-            reply_markup=kb_inline,
-            protect_content=protect_for(user_id)
-        )
-    else:
+        # 🔄 TOKENNI O‘CHIRAMIZ
+        last_watch_token.pop(call.from_user.id, None)
+
+        await call.answer()
+
+    except Exception as e:
+        # 🔥 Railway jim qolmasligi uchun
+        print("WATCH ERROR:", e)
+
+        await call.message.answer("❌ Xatolik chiqdi qanaqadir", reply_markup=user_menu())
+        await call.answer()
+
+# ================== SERIALNI USERGA YUBORISH (kanalga emas) ==================
+
+async def send_series_to_user(user_id: int, code: str):
+
+    try:
+        if not await check_subscription(user_id):
+            await bot.send_message(user_id, "❗️ Avval kanalga obuna bo‘ling", reply_markup=subscribe_kb())
+            return
+
+        db = load_db()
+        item = db.get(code)
+
+        if not item or item.get("type") != "series":
+            await bot.send_message(user_id, "❌ Bunday kodli kino topilmadi", reply_markup=user_menu())
+            return
+
+        ep_nums = _sorted_episode_numbers(item)
+        if not ep_nums:
+            await bot.send_message(user_id, "❌ Qismlar topilmadi", reply_markup=user_menu())
+            return
+
+        ch_msg_id = item.get("channel_msg_id")
+
+        # 🔥 Kanal postini copy qilish
+        if ch_msg_id:
+            try:
+                await bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=CHANNEL2_ID,
+                    message_id=ch_msg_id,
+                    reply_markup=series_eps_kb(code, ep_nums),
+                    protect_content=protect_for(user_id)
+                )
+                return
+            except Exception as e:
+                print("COPY ERROR:", e)
+
+        # 🔁 fallback (agar copy ishlamasa)
         await bot.send_photo(
             chat_id=user_id,
             photo=item["poster_file_id"],
             caption=safe_caption(item.get("poster_caption", "")),
-            reply_markup=kb_inline,
-            protect_content=protect_for(user_id),
-            parse_mode="HTML"
+            reply_markup=series_eps_kb(code, ep_nums),
+            protect_content=protect_for(user_id)
         )
+
+    except Exception as e:
+        print("SERIES SEND ERROR:", e)
+        await bot.send_message(user_id, "❌ Xatolik chiqdi qanaqadir", reply_markup=user_menu())
+
+
+# ================== CALLBACKLAR ==================
+
+@dp.callback_query_handler(lambda c: c.data.startswith("series_private:"))
+async def series_private_from_bot(call: types.CallbackQuery):
+    code = call.data.split(":", 1)[1]
+    await send_series_to_user(call.from_user.id, code)
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("series_ep:"))
+async def series_ep(call: types.CallbackQuery):
+
+    try:
+        _, code, ep_str = call.data.split(":")
+        ep_num = int(ep_str)
+
+        if not await check_subscription(call.from_user.id):
+            await call.message.answer("❗️ Avval kanalga obuna bo‘ling", reply_markup=subscribe_kb())
+            await call.answer()
+            return
+
+        db = load_db()
+        item = db.get(code)
+
+        if not item or item.get("type") != "series":
+            await call.answer("❌ Topilmadi", show_alert=True)
+            return
+
+        ep = (item.get("episodes", {}) or {}).get(str(ep_num))
+
+        if not ep:
+            await call.answer("❌ Topilmadi", show_alert=True)
+            return
+
+        video_id = ep.get("video_file_id")
+        if not video_id:
+            await call.message.answer("❌ Video topilmadi", reply_markup=user_menu())
+            await call.answer()
+            return
+
+        cap = _episode_user_caption(ep_num, (ep or {}).get("title", ""))
+
+        await bot.send_video(
+            chat_id=call.from_user.id,
+            video=video_id,
+            caption=cap,
+            protect_content=protect_for(call.from_user.id)
+        )
+
+        await call.answer()
+
+    except Exception as e:
+        print("SERIES EP ERROR:", e)
+        await call.message.answer("❌ Xatolik chiqdi qanaqadir", reply_markup=user_menu())
+        await call.answer()
 
 # ================== STATISTIKA ==================
 def stats_text():
