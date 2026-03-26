@@ -1419,30 +1419,76 @@ async def delete_trailer(call: types.CallbackQuery):
 @dp.message_handler(state=EditFlow.await_forward, content_types=types.ContentType.ANY)
 async def edit_receive_forward(message: types.Message, state: FSMContext):
 
+    # 🔒 FORWARD TEKSHIRISH
+    if not await _is_forward_from_base(message):
+        await message.answer("❗ Iltimos, <b>Kanal1 (baza)</b>dan forward qiling.", reply_markup=admin_menu())
+        return
+
     data = await state.get_data()
-    action, code = data.get("pending")
+    pending = data.get("pending")
+
+    if not pending:
+        await message.answer("❎ Bekor qilindi tog'o", reply_markup=admin_menu())
+        await state.finish()
+        return
+
+    action, code = pending
 
     db = load_db()
     item = db.get(code)
 
+    if not item:
+        await message.answer("❌ Bunaqa kino o'zi yo'q tog'o", reply_markup=admin_menu())
+        await state.finish()
+        return
+
     # -------- MOVIE POST --------
     if action == "movie_post":
+        if message.content_type != types.ContentType.PHOTO:
+            await message.answer("❗ Rasm yuboring.", reply_markup=admin_menu())
+            return
+
         item["post_file_id"] = message.photo[-1].file_id
         item["post_caption"] = message.caption or ""
 
     # -------- MOVIE VIDEO --------
     elif action == "movie_video":
+        if message.content_type != types.ContentType.VIDEO:
+            await message.answer("❗ Video yuboring.", reply_markup=admin_menu())
+            return
+
+        if _duplicate_video_exists(db, message.video.file_unique_id):
+            await message.answer("❗ Bu kino borku tog'o", reply_markup=admin_menu())
+            return
+
         item["video_file_id"] = message.video.file_id
         item["video_unique_id"] = message.video.file_unique_id
 
     # -------- SERIES POST --------
     elif action == "series_post":
+        if message.content_type != types.ContentType.PHOTO:
+            await message.answer("❗ Rasm yuboring.", reply_markup=admin_menu())
+            return
+
         item["poster_file_id"] = message.photo[-1].file_id
         item["poster_caption"] = message.caption or ""
 
     # -------- SERIES ADD --------
     elif action == "series_add":
+        if message.content_type != types.ContentType.VIDEO:
+            await message.answer("❗ Video yuboring.", reply_markup=admin_menu())
+            return
+
         ep, title = _parse_episode_caption(message.caption or "")
+        if ep is None:
+            await message.answer("❗ Captionda qism raqami yo‘q.", reply_markup=admin_menu())
+            return
+
+        if _duplicate_video_exists(db, message.video.file_unique_id):
+            await message.answer("❗ Bu kino borku tog'o", reply_markup=admin_menu())
+            return
+
+        item.setdefault("episodes", {})
         item["episodes"][str(ep)] = {
             "video_file_id": message.video.file_id,
             "video_unique_id": message.video.file_unique_id,
@@ -1451,7 +1497,16 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
 
     # -------- SERIES REPLACE --------
     elif action == "series_replace":
+        if message.content_type != types.ContentType.VIDEO:
+            await message.answer("❗ Video yuboring.", reply_markup=admin_menu())
+            return
+
         ep, title = _parse_episode_caption(message.caption or "")
+        if ep is None:
+            await message.answer("❗ Captionda qism raqami yo‘q.", reply_markup=admin_menu())
+            return
+
+        item.setdefault("episodes", {})
         item["episodes"][str(ep)] = {
             "video_file_id": message.video.file_id,
             "video_unique_id": message.video.file_unique_id,
@@ -1460,12 +1515,21 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
 
     # -------- TRAILER --------
     elif action == "trailer":
+        if message.content_type != types.ContentType.VIDEO:
+            await message.answer("❗ Treyler video bo‘lishi kerak.", reply_markup=admin_menu())
+            return
+
         item["trailer"] = {
             "file_id": message.video.file_id,
             "video_unique_id": message.video.file_unique_id,
             "caption": message.caption or "",
             "channel_msg_id": None
         }
+
+    else:
+        await message.answer("❎ Bekor qilindi tog'o", reply_markup=admin_menu())
+        await state.finish()
+        return
 
     db[code] = item
     save_db(db)
