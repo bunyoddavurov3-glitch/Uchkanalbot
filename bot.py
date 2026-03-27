@@ -332,6 +332,18 @@ def safe_caption(text: str) -> str:
     return make_links_clickable(text)
 
 # ================== INLINE KB ==================
+
+def movie_watch_kb(code: str, token: str) -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup()
+    kb.add(
+        types.InlineKeyboardButton(
+            "🎬 Filmni ko‘rish",
+            callback_data=f"watch2_{code}_{token}"
+        )
+    )
+    return kb
+
+
 def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup(row_width=1)
 
@@ -343,7 +355,7 @@ def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.Inli
         )
     )
 
-    # 🎞 Treyler tugmasi (faqat URL bo‘lsa chiqadi)
+    # 🎞 Treyler tugmasi
     if trailer_url:
         kb.add(
             types.InlineKeyboardButton(
@@ -366,7 +378,7 @@ def channel_series_kb(code: str, trailer_url: Optional[str] = None) -> types.Inl
         )
     )
 
-    # 🎞 Treyler tugmasi (faqat URL bo‘lsa chiqadi)
+    # 🎞 Treyler tugmasi
     if trailer_url:
         kb.add(
             types.InlineKeyboardButton(
@@ -375,6 +387,15 @@ def channel_series_kb(code: str, trailer_url: Optional[str] = None) -> types.Inl
             )
         )
 
+    return kb
+
+
+def series_eps_kb(code: str, eps: List[int]) -> types.InlineKeyboardMarkup:
+    kb = types.InlineKeyboardMarkup(row_width=5)
+    kb.add(*[
+        types.InlineKeyboardButton(str(n), callback_data=f"series_ep:{code}:{n}")
+        for n in eps
+    ])
     return kb
 
 
