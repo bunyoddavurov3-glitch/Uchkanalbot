@@ -319,15 +319,10 @@ def safe_caption(text: str) -> str:
     return (text or "").strip()
 
 # ================== INLINE KB ==================
-def movie_watch_kb(code: str, token: str) -> types.InlineKeyboardMarkup:
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🎬 Filmni ko‘rish", callback_data=f"watch2_{code}_{token}"))
-    return kb
-
-
 def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup(row_width=1)
 
+    # 🎬 Bot orqali ko‘rish
     kb.add(
         types.InlineKeyboardButton(
             "🎬 Filmni bot orqali ko‘rish",
@@ -335,7 +330,7 @@ def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.Inli
         )
     )
 
-    # 🆕 Treyler tugmasi
+    # 🎞 Treyler tugmasi (faqat URL bo‘lsa chiqadi)
     if trailer_url:
         kb.add(
             types.InlineKeyboardButton(
@@ -350,6 +345,7 @@ def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.Inli
 def channel_series_kb(code: str, trailer_url: Optional[str] = None) -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup(row_width=1)
 
+    # 📺 Barcha qismlar
     kb.add(
         types.InlineKeyboardButton(
             "📺 Barcha qismlari",
@@ -357,7 +353,7 @@ def channel_series_kb(code: str, trailer_url: Optional[str] = None) -> types.Inl
         )
     )
 
-    # 🆕 Treyler tugmasi
+    # 🎞 Treyler tugmasi (faqat URL bo‘lsa chiqadi)
     if trailer_url:
         kb.add(
             types.InlineKeyboardButton(
@@ -366,15 +362,6 @@ def channel_series_kb(code: str, trailer_url: Optional[str] = None) -> types.Inl
             )
         )
 
-    return kb
-
-
-def series_eps_kb(code: str, eps: List[int]) -> types.InlineKeyboardMarkup:
-    kb = types.InlineKeyboardMarkup(row_width=5)
-    kb.add(*[
-        types.InlineKeyboardButton(str(n), callback_data=f"series_ep:{code}:{n}")
-        for n in eps
-    ])
     return kb
 
 
@@ -458,39 +445,36 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
     if item.get("channel_msg_id"):
         return False, "⚠️ Bu kino kanalda bor tog'o. Dublikat chiqarmaymiz."
 
-    # -------- MOVIE --------
+    trailer = item.get("trailer")
+    trailer_url = None
+
+    # ================== 1. TREYLERNI 3K GA YUBORAMIZ ==================
+    if isinstance(trailer, dict) and trailer.get("from_chat_id") and trailer.get("message_id"):
+        try:
+            msg_tr = await bot.copy_message(
+                chat_id=CHANNEL3_ID,
+                from_chat_id=trailer["from_chat_id"],
+                message_id=trailer["message_id"]
+            )
+
+            trailer_url = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
+
+            # 🔥 DB ga ham saqlab qo‘yamiz
+            trailer["channel_msg_id"] = msg_tr.message_id
+            trailer["post_url"] = trailer_url
+            item["trailer"] = trailer
+
+        except Exception as e:
+            print("TRAILER PUBLISH ERROR:", e)
+            trailer_url = None
+
+    # ================== 2. MOVIE ==================
     if item.get("type") == "movie":
         caption = safe_caption(
             f"{(item.get('post_caption') or '').strip()}\n\n🆔 Kod: {code}"
         )
 
-        kb = channel_movie_kb(code)
-
-        trailer = item.get("trailer")
-
-        # 🔥 1. AVVAL 3K GA YUBORAMIZ
-        if trailer and trailer.get("file_id") and not trailer.get("channel_msg_id"):
-            try:
-                msg_tr = await bot.send_video(
-                    CHANNEL3_ID,
-                    trailer["file_id"],
-                    caption=safe_caption(trailer.get("caption", "")),
-                    parse_mode="HTML"
-                )
-                trailer["channel_msg_id"] = msg_tr.message_id
-                trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
-                item["trailer"] = trailer
-            except Exception:
-                pass
-
-        # 🔥 2. KEYIN TUGMA QO‘SHAMIZ (FAKAT URL BO‘LSA)
-        if trailer and trailer.get("post_url"):
-            kb.add(
-                types.InlineKeyboardButton(
-                    "🎬 Treyler va ma'lumotlar",
-                    url=trailer["post_url"]
-                )
-            )
+        kb = channel_movie_kb(code, trailer_url)
 
         msg = await bot.send_photo(
             CHANNEL2_ID,
@@ -506,37 +490,13 @@ async def publish_to_channel(code: str) -> Tuple[bool, str]:
 
         return True, "🚀 Kanalga keeetti tog'o"
 
-    # -------- SERIES --------
+    # ================== 3. SERIES ==================
     if item.get("type") == "series":
         caption = safe_caption(
             f"{(item.get('poster_caption') or '').strip()}\n\n🆔 Kod: {code}"
         )
 
-        kb = channel_series_kb(code)
-
-        trailer = item.get("trailer")
-
-        if trailer and trailer.get("file_id") and not trailer.get("channel_msg_id"):
-            try:
-                msg_tr = await bot.send_video(
-                    CHANNEL3_ID,
-                    trailer["file_id"],
-                    caption=safe_caption(trailer.get("caption", "")),
-                    parse_mode="HTML"
-                )
-                trailer["channel_msg_id"] = msg_tr.message_id
-                trailer["post_url"] = f"https://t.me/c/{str(CHANNEL3_ID)[4:]}/{msg_tr.message_id}"
-                item["trailer"] = trailer
-            except Exception:
-                pass
-
-        if trailer and trailer.get("post_url"):
-            kb.add(
-                types.InlineKeyboardButton(
-                    "🎬 Treyler va ma'lumotlar",
-                    url=trailer["post_url"]
-                )
-            )
+        kb = channel_series_kb(code, trailer_url)
 
         msg = await bot.send_photo(
             CHANNEL2_ID,
@@ -713,7 +673,6 @@ async def add_post(message: types.Message, state: FSMContext):
     )
     await AddMovie.trailer.set()
 
-
 # ================== TREYLER ==================
 @dp.message_handler(lambda m: m.text == "❌ Treyler yo‘q", state=AddMovie.trailer)
 async def skip_trailer(message: types.Message, state: FSMContext):
@@ -723,26 +682,28 @@ async def skip_trailer(message: types.Message, state: FSMContext):
     await AddMovie.video.set()
 
 
-@dp.message_handler(content_types=types.ContentType.VIDEO, state=AddMovie.trailer)
-async def add_trailer(message: types.Message, state: FSMContext):
-    db = load_db()
+@dp.message_handler(state=AddMovie.trailer, content_types=types.ContentType.ANY)
+async def add_trailer_any(message: types.Message, state: FSMContext):
 
-    if _duplicate_video_exists(db, message.video.file_unique_id):
-        await message.answer("❗ Bu video allaqachon bor (treyler)", reply_markup=admin_menu())
+    # ❗ faqat 1K dan forward bo‘lishi shart
+    if not await _is_forward_from_base(message):
+        await message.answer("❗ Iltimos, treylerni <b>Kanal1 (baza)</b>dan forward qiling.", reply_markup=admin_menu())
         return
 
-    await state.update_data(
-        trailer={
-            "file_id": message.video.file_id,
-            "video_unique_id": message.video.file_unique_id,
-            "caption": message.caption or "",
-            "channel_msg_id": None
+    try:
+        trailer_data = {
+            "from_chat_id": message.forward_from_chat.id,
+            "message_id": message.forward_from_message_id
         }
-    )
 
-    await message.answer("🎥 Endi film videosini yuboring", reply_markup=admin_menu())
-    await AddMovie.video.set()
+        await state.update_data(trailer=trailer_data)
 
+        await message.answer("🎥 Endi film videosini yuboring", reply_markup=admin_menu())
+        await AddMovie.video.set()
+
+    except Exception as e:
+        print("TRAILER SAVE ERROR:", e)
+        await message.answer("❌ Treylerni saqlashda xatolik bo‘ldi", reply_markup=admin_menu())
 
 # ================== VIDEO ==================
 @dp.message_handler(content_types=types.ContentType.VIDEO, state=AddMovie.video)
@@ -813,7 +774,6 @@ async def add_series_poster(message: types.Message, state: FSMContext):
     )
     await AddSeries.trailer.set()
 
-
 # ================== TREYLER ==================
 @dp.message_handler(lambda m: m.text == "❌ Treyler yo‘q", state=AddSeries.trailer)
 async def skip_series_trailer(message: types.Message, state: FSMContext):
@@ -828,32 +788,34 @@ async def skip_series_trailer(message: types.Message, state: FSMContext):
     await AddSeries.episodes.set()
 
 
-@dp.message_handler(content_types=types.ContentType.VIDEO, state=AddSeries.trailer)
-async def add_series_trailer(message: types.Message, state: FSMContext):
-    db = load_db()
+@dp.message_handler(state=AddSeries.trailer, content_types=types.ContentType.ANY)
+async def add_series_trailer_any(message: types.Message, state: FSMContext):
 
-    if _duplicate_video_exists(db, message.video.file_unique_id):
-        await message.answer("❗ Bu video allaqachon bor (treyler)", reply_markup=admin_menu())
+    # ❗ faqat 1K dan forward
+    if not await _is_forward_from_base(message):
+        await message.answer("❗ Iltimos, treylerni <b>Kanal1 (baza)</b>dan forward qiling.", reply_markup=admin_menu())
         return
 
-    await state.update_data(
-        trailer={
-            "file_id": message.video.file_id,
-            "video_unique_id": message.video.file_unique_id,
-            "caption": message.caption or "",
-            "channel_msg_id": None
+    try:
+        trailer_data = {
+            "from_chat_id": message.forward_from_chat.id,
+            "message_id": message.forward_from_message_id
         }
-    )
 
-    await message.answer(
-        "Endi Kanal1 (baza)dan videoni forward qiling.\n"
-        "Caption misol: <b>1 Yura davri 3</b>\n\n"
-        "Tugatish uchun <b>Ha</b> deb yozing.",
-        reply_markup=admin_menu()
-    )
-    await AddSeries.episodes.set()
+        await state.update_data(trailer=trailer_data)
 
+        await message.answer(
+            "Endi Kanal1 (baza)dan videoni forward qiling.\n"
+            "Caption misol: <b>1 Yura davri 3</b>\n\n"
+            "Tugatish uchun <b>Ha</b> deb yozing.",
+            reply_markup=admin_menu()
+        )
+        await AddSeries.episodes.set()
 
+    except Exception as e:
+        print("SERIES TRAILER SAVE ERROR:", e)
+        await message.answer("❌ Treylerni saqlashda xatolik bo‘ldi", reply_markup=admin_menu())
+        
 # ================== FINISH ==================
 @dp.message_handler(lambda m: (m.text or "").strip().lower() == "ha", state=AddSeries.episodes)
 async def add_series_finish(message: types.Message, state: FSMContext):
@@ -955,7 +917,7 @@ async def publish_series(call: types.CallbackQuery):
     await call.message.edit_text(msg if ok else msg)
     await call.answer()
 
-# ================== QIDIRISH (KOD) ==================
+# ================== QIDIRISH ==================
 @dp.message_handler(lambda m: m.text and m.text.strip().isdigit())
 async def search_movie(message: types.Message):
     kb = admin_menu() if is_admin(message.from_user.id) else user_menu()
@@ -982,12 +944,12 @@ async def search_movie(message: types.Message):
 
         kb_inline = movie_watch_kb(code, token)
 
-        # 🔥 TREYLER TUGMA (agar bo‘lsa)
+        # 🔥 TREYLER TUGMA (faqat post_url orqali)
         trailer = item.get("trailer")
-        if trailer and trailer.get("post_url"):
+        if isinstance(trailer, dict) and trailer.get("post_url"):
             kb_inline.add(
                 types.InlineKeyboardButton(
-                    "🎬 Treyler va ma'lumotlar",
+                    "🎞 Treyler va ma'lumotlar",
                     url=trailer.get("post_url")
                 )
             )
@@ -1007,11 +969,12 @@ async def search_movie(message: types.Message):
         types.InlineKeyboardButton("📺 Barcha qismlari", callback_data=f"series_private:{code}")
     )
 
+    # 🔥 TREYLER TUGMA (faqat post_url orqali)
     trailer = item.get("trailer")
-    if trailer and trailer.get("post_url"):
+    if isinstance(trailer, dict) and trailer.get("post_url"):
         kb_inline.add(
             types.InlineKeyboardButton(
-                "🎬 Treyler va ma'lumotlar",
+                "🎞 Treyler va ma'lumotlar",
                 url=trailer.get("post_url")
             )
         )
@@ -1650,6 +1613,10 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
         await state.finish()
         return
 
+    # 🔥 TREYLER URLNI OLDINDAN OLAMIZ (hamma joyda ishlatamiz)
+    trailer = item.get("trailer")
+    trailer_url = trailer.get("post_url") if isinstance(trailer, dict) else None
+
     # -------- movie_post --------
     if action == "movie_post":
         if message.content_type != types.ContentType.PHOTO:
@@ -1666,10 +1633,20 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
             final_caption = _apply_edit_banner(final_caption, MOVIE_BANNER)
             try:
                 media = types.InputMediaPhoto(media=new_photo, caption=final_caption, parse_mode="HTML")
-                await bot.edit_message_media(CHANNEL2_ID, ch_msg_id, media=media, reply_markup=channel_movie_kb(code))
+                await bot.edit_message_media(
+                    CHANNEL2_ID,
+                    ch_msg_id,
+                    media=media,
+                    reply_markup=channel_movie_kb(code, trailer_url)  # 🔥 MUHIM
+                )
             except Exception:
                 try:
-                    await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_movie_kb(code))
+                    await bot.edit_message_caption(
+                        CHANNEL2_ID,
+                        ch_msg_id,
+                        caption=final_caption,
+                        reply_markup=channel_movie_kb(code, trailer_url)  # 🔥 MUHIM
+                    )
                 except Exception:
                     pass
 
@@ -1717,10 +1694,20 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
             final_caption = _apply_edit_banner(final_caption, SERIES_BANNER)
             try:
                 media = types.InputMediaPhoto(media=new_photo, caption=final_caption, parse_mode="HTML")
-                await bot.edit_message_media(CHANNEL2_ID, ch_msg_id, media=media, reply_markup=channel_series_kb(code))
+                await bot.edit_message_media(
+                    CHANNEL2_ID,
+                    ch_msg_id,
+                    media=media,
+                    reply_markup=channel_series_kb(code, trailer_url)  # 🔥 MUHIM
+                )
             except Exception:
                 try:
-                    await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_series_kb(code))
+                    await bot.edit_message_caption(
+                        CHANNEL2_ID,
+                        ch_msg_id,
+                        caption=final_caption,
+                        reply_markup=channel_series_kb(code, trailer_url)  # 🔥 MUHIM
+                    )
                 except Exception:
                     pass
 
@@ -1767,14 +1754,19 @@ async def edit_receive_forward(message: types.Message, state: FSMContext):
         db[code] = item
         save_db(db)
 
-        # Kanal postiga ham banner qo'yib qo'yamiz (agar kanalda bo'lsa)
+        # 🔥 KANAL POSTNI HAM YANGILAYMIZ (tugma saqlanadi)
         ch_msg_id = item.get("channel_msg_id")
         if ch_msg_id:
             try:
                 old_with_code = f"{(item.get('poster_caption') or '').strip()}\n\n🆔 Kod: {code}"
                 final_caption = _ensure_code_line_kept(item.get("poster_caption") or "", old_with_code, code)
                 final_caption = _apply_edit_banner(final_caption, SERIES_BANNER)
-                await bot.edit_message_caption(CHANNEL2_ID, ch_msg_id, caption=final_caption, reply_markup=channel_series_kb(code))
+                await bot.edit_message_caption(
+                    CHANNEL2_ID,
+                    ch_msg_id,
+                    caption=final_caption,
+                    reply_markup=channel_series_kb(code, trailer_url)  # 🔥 MUHIM
+                )
             except Exception:
                 pass
 
