@@ -255,19 +255,17 @@ def _ensure_code_line_kept(new_caption: str, old_caption_with_code: str, code: s
 
 def _duplicate_video_exists(db: Dict[str, Any], video_unique_id: str) -> bool:
     for it in db.values():
+
+        # 🎬 YAKKA FILM
         if it.get("type") == "movie":
             if it.get("video_unique_id") == video_unique_id:
                 return True
+
+        # 📺 SERIAL
         elif it.get("type") == "series":
             for epv in (it.get("episodes", {}) or {}).values():
                 if isinstance(epv, dict) and epv.get("video_unique_id") == video_unique_id:
                     return True
-
-        # 🆕 TREYLERNI HAM TEKSHIRAMIZ
-        tr = it.get("trailer")
-        if isinstance(tr, dict):
-            if tr.get("video_unique_id") == video_unique_id:
-                return True
 
     return False
 
@@ -310,13 +308,28 @@ def _sorted_episode_numbers(item: Dict[str, Any]) -> List[int]:
     return sorted(nums)
 
 # ================== CAPTION FORMAT FIX ==================
+def make_links_clickable(text: str) -> str:
+    if not text:
+        return ""
+
+    # t.me linklarni topamiz
+    pattern = r"(https?://t\.me/[^\s]+)"
+
+    def repl(match):
+        url = match.group(1)
+        return f'<a href="{url}">🎬 Treyler va boshqa ma\'lumotlar</a>'
+
+    return re.sub(pattern, repl, text)
+
+
 def safe_caption(text: str) -> str:
     """
     Captionni buzmasdan yuborish:
     - HTML ni saqlaydi
-    - oddiy linklarni ham ishlatadi
+    - oddiy linklarni avtomatik ko‘k clickable qiladi
     """
-    return (text or "").strip()
+    text = (text or "").strip()
+    return make_links_clickable(text)
 
 # ================== INLINE KB ==================
 def channel_movie_kb(code: str, trailer_url: Optional[str] = None) -> types.InlineKeyboardMarkup:
@@ -1876,13 +1889,6 @@ async def publish_later_code(message: types.Message, state: FSMContext):
     # ================== DUBLIKAT TEKSHIRUV ==================
     if item.get("channel_msg_id"):
         await message.answer("⚠️ Bu kino 2K kanalda bor tog'o. Dublikat yubormaymiz.", reply_markup=admin_menu())
-        await state.finish()
-        return
-
-    # Treyler ham bor bo‘lsa tekshiramiz (3K)
-    trailer = item.get("trailer")
-    if isinstance(trailer, dict) and trailer.get("channel_msg_id"):
-        await message.answer("⚠️ Treyler 3K kanalda bor tog'o. Dublikat yubormaymiz.", reply_markup=admin_menu())
         await state.finish()
         return
 
